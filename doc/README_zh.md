@@ -5,7 +5,7 @@
   FastDFS为互联网应用量身定做，解决大容量文件存储问题，实现高性能和高扩展性。FastDFS可以看做是基于文件的key value存储系统，key为文件ID，value为文件本身，因此称作分布式文件存储服务更为合适。
 
   FastDFS的架构比较简单，如下图所示：
-  ![architect](images/architect.png)
+  ![architect](assets/architect.png)
 
 ```
   FastDFS特点：
