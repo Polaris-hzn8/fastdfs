@@ -42,6 +42,7 @@
 #include "trunk_mem.h"
 #include "trunk_sync.h"
 #include "trunk_shared.h"
+#include "file_id_hashtable.h"
 
 #ifdef WITH_HTTPD
 #include "storage_httpd.h"
@@ -249,8 +250,15 @@ int main(int argc, char *argv[])
 		return result;
     }
 
-	if ((result=set_run_by(g_sf_global_vars.run_by_group,
-                    g_sf_global_vars.run_by_user)) != 0)
+    if ((result=file_id_hashtable_init()) != 0)
+    {
+		logCrit("exit abnormally!\n");
+		log_destroy();
+		return result;
+    }
+
+	if ((result=set_run_by(g_sf_global_vars.run_by.group,
+                    g_sf_global_vars.run_by.user)) != 0)
 	{
 		logCrit("exit abnormally!\n");
 		log_destroy();
@@ -351,18 +359,34 @@ static void sigAlarmHandler(int sig)
 	logDebug("file: "__FILE__", line: %d, " \
 		"signal server to quit...", __LINE__);
 
-	if (*SF_G_INNER_BIND_ADDR != '\0')
-	{
-		strcpy(server.ip_addr, SF_G_INNER_BIND_ADDR);
-	}
-	else
-	{
-		strcpy(server.ip_addr, "127.0.0.1");
-	}
+    if (SF_G_IPV4_ENABLED)
+    {
+        server.af = AF_INET;
+        if (*SF_G_INNER_BIND_ADDR4 != '\0')
+        {
+            strcpy(server.ip_addr, SF_G_INNER_BIND_ADDR4);
+        }
+        else
+        {
+            strcpy(server.ip_addr, LOCAL_LOOPBACK_IPv4);
+        }
+    }
+    else
+    {
+        server.af = AF_INET6;
+        if (*SF_G_INNER_BIND_ADDR6 != '\0')
+        {
+            strcpy(server.ip_addr, SF_G_INNER_BIND_ADDR6);
+        }
+        else
+        {
+            strcpy(server.ip_addr, LOCAL_LOOPBACK_IPv6);
+        }
+    }
 	server.port = SF_G_INNER_PORT;
 	server.sock = -1;
 
-	if (conn_pool_connect_server(&server, SF_G_CONNECT_TIMEOUT) != 0)
+	if (conn_pool_connect_server(&server, SF_G_CONNECT_TIMEOUT * 1000) != 0)
 	{
 		return;
 	}
@@ -476,9 +500,9 @@ static int setup_schedule_tasks()
 
 	if (g_compress_binlog)
 	{
-		INIT_SCHEDULE_ENTRY_EX(scheduleEntries[scheduleArray.count],
+		INIT_SCHEDULE_ENTRY_EX1(scheduleEntries[scheduleArray.count],
 			sched_generate_next_id(), g_compress_binlog_time,
-			24 * 3600, fdfs_binlog_compress_func, NULL);
+			24 * 3600, fdfs_binlog_compress_func, NULL, true);
 		scheduleArray.count++;
     }
 

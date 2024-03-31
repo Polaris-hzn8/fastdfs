@@ -1,10 +1,27 @@
 
+Version 6.12.1  2024-03-06
+ * adapt to libserverframe 1.2.3
+ * bugfixed: notify_leader_changed support IPv6 correctly
+ * log square quoted IPv6 address
+
+Version 6.12.0  2024-02-12
+ * bugfixed: parse ip and port use parseAddress instead of splitEx
+ * bugfixed: fdfs_server_info_to_string support IPv6 correctly
+ * check filename duplicate by hashtable instead of file system access
+
+Version 6.11.0  2023-12-10
+ * support IPv6, config item: address_family in tracker.conf and storage.conf
+   use libfastcommon V1.71 and libserverframe 1.2.1
+ * storage.conf can specify the storage server ID for NAT network
+
+Version 6.10.0  2023-09-07
+ * use libfastcommon V1.70 and libserverframe 1.2.0
+
 Version 6.9.5  2023-06-05
  * fix possible out-of-bounds issues with array access
  * fix realloc mistakes to avoid memory leaks
  * add ExecStartPost=/bin/sleep 0.1 to systemd service files
  * fdht_client/fdht_func.c: fixed compile error
-
 
 Version 6.9.4  2023-02-15
  * use epoll edge trigger to resolve github issues #608

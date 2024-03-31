@@ -32,6 +32,7 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 	char reserved_space_str[32];
     char tracker_client_ip_str[256];
     char last_storage_ip_str[256];
+    char formatted_ip[FORMATTED_IP_SIZE];
     char *p;
 	int total_len;
 	int i;
@@ -40,6 +41,7 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
             tracker_client_ip_str, sizeof(tracker_client_ip_str));
     fdfs_multi_ips_to_string(&g_last_storage_ip,
             last_storage_ip_str, sizeof(last_storage_ip_str));
+    format_ip_address(g_trunk_server.connections[0].ip_addr, formatted_ip);
 
 	total_len = snprintf(buff, buffSize,
 		"SF_G_CONNECT_TIMEOUT=%ds\n"
@@ -49,7 +51,7 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 		"SF_G_CONTINUE_FLAG=%d\n"
 		"g_schedule_flag=%d\n"
 		"SF_G_INNER_PORT=%d\n"
-		"g_max_connections=%d\n"
+		"SF_G_MAX_CONNECTIONS=%d\n"
 		"g_storage_thread_count=%d\n"
 		"g_group_name=%s\n"
 		"g_subdir_count_per_path=%d\n"
@@ -93,7 +95,8 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 		"g_check_file_duplicate=%d\n"
 		"g_key_namespace=%s\n"
 		"g_namespace_len=%d\n"
-		"SF_G_INNER_BIND_ADDR=%s\n"
+		"bind_addr_ipv4=%s\n"
+		"bind_addr_ipv6=%s\n"
 		"g_client_bind_addr=%d\n"
 		"g_storage_ip_changed_auto_adjust=%d\n"
 		"g_thread_kill_done=%d\n"
@@ -142,7 +145,7 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
         , g_fdfs_version.patch, SF_G_CONTINUE_FLAG
 		, g_schedule_flag
 		, SF_G_INNER_PORT
-		, g_sf_global_vars.max_connections
+		, SF_G_MAX_CONNECTIONS
 		, SF_G_ALIVE_THREAD_COUNT 
 		, g_group_name
 		, g_subdir_count_per_path 
@@ -150,8 +153,8 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 		, g_last_server_port 
 		, g_last_http_port
 		, g_allow_ip_count
-		, g_sf_global_vars.run_by_group
-		, g_sf_global_vars.run_by_user
+		, g_sf_global_vars.run_by.group
+		, g_sf_global_vars.run_by.user
 		, g_http_domain
 		, g_file_distribute_path_mode
 		, g_file_distribute_rotate_count
@@ -188,7 +191,8 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 		, g_check_file_duplicate
 		, g_key_namespace
 		, g_namespace_len
-		, SF_G_INNER_BIND_ADDR
+		, SF_G_INNER_BIND_ADDR4
+		, SF_G_INNER_BIND_ADDR6
 		, g_client_bind_addr
 		, g_storage_ip_changed_auto_adjust
 		, g_thread_kill_done
@@ -206,18 +210,18 @@ static int fdfs_dump_global_vars(char *buff, const int buffSize)
 		, g_slot_min_size
 		, g_trunk_file_size
 		, g_store_path_mode
-		, fdfs_storage_reserved_space_to_string( \
-			&g_storage_reserved_space, reserved_space_str) \
+		, fdfs_storage_reserved_space_to_string(
+			&g_storage_reserved_space, reserved_space_str)
 		, g_avg_storage_reserved_mb
 		, g_store_path_index
 		, g_current_trunk_file_id
 		, g_trunk_sync_thread_count
-		, g_trunk_server.connections[0].ip_addr
+        , formatted_ip
         , g_trunk_server.connections[0].port
 		, g_trunk_total_free_space
 		, g_use_connection_pool
 		, g_connection_pool_max_idle_time
-		, g_use_connection_pool ? conn_pool_get_connection_count( \
+		, g_use_connection_pool ? conn_pool_get_connection_count(
 			&g_connection_pool) : 0
 	#ifdef WITH_HTTPD
 		, g_http_params.disabled
@@ -270,6 +274,7 @@ static int fdfs_dump_tracker_servers(char *buff, const int buffSize)
 	int total_len;
 	TrackerServerInfo *pTrackerServer;
 	TrackerServerInfo *pTrackerEnd;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
 	total_len = snprintf(buff, buffSize, \
 		"\ng_tracker_group.server_count=%d, " \
@@ -285,11 +290,12 @@ static int fdfs_dump_tracker_servers(char *buff, const int buffSize)
 	for (pTrackerServer=g_tracker_group.servers; \
 		pTrackerServer<pTrackerEnd; pTrackerServer++)
 	{
+        format_ip_address(pTrackerServer->connections[0].
+                ip_addr, formatted_ip);
 		total_len += snprintf(buff + total_len, buffSize - total_len,
 			"\t%d. tracker server=%s:%u\n",
 			(int)(pTrackerServer - g_tracker_group.servers) + 1,
-			pTrackerServer->connections[0].ip_addr,
-            pTrackerServer->connections[0].port);
+            formatted_ip, pTrackerServer->connections[0].port);
 	}
 
 	return total_len;
@@ -365,7 +371,7 @@ static int fdfs_dump_storage_stat(char *buff, const int buffSize)
 		"last_synced_timestamp=%s\n"
 		"last_heart_beat_time=%s\n",
 		g_stat_change_count, g_sync_change_count,
-        free_queue_alloc_connections(),
+        free_queue_alloc_connections(&g_sf_context.free_queue),
 		SF_G_CONN_CURRENT_COUNT,
 		SF_G_CONN_MAX_COUNT,
 		g_storage_stat.total_upload_count,

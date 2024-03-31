@@ -141,6 +141,7 @@ static int storage_check_and_make_data_dirs();
 static int storage_do_get_group_name(ConnectionInfo *pTrackerServer)
 {
 	char out_buff[sizeof(TrackerHeader) + 4];
+    char formatted_ip[FORMATTED_IP_SIZE];
 	TrackerHeader *pHeader;
 	char *pInBuff;
 	int64_t in_bytes;
@@ -154,12 +155,11 @@ static int storage_do_get_group_name(ConnectionInfo *pTrackerServer)
 	if ((result=tcpsenddata_nb(pTrackerServer->sock, out_buff, \
 			sizeof(out_buff), SF_G_NETWORK_TIMEOUT)) != 0)
 	{
-		logError("file: "__FILE__", line: %d, " \
-			"tracker server %s:%u, send data fail, " \
-			"errno: %d, error info: %s.", \
-			__LINE__, pTrackerServer->ip_addr, \
-			pTrackerServer->port, \
-			result, STRERROR(result));
+        format_ip_address(pTrackerServer->ip_addr, formatted_ip);
+		logError("file: "__FILE__", line: %d, "
+			"tracker server %s:%u, send data fail, errno: %d, "
+			"error info: %s.", __LINE__, formatted_ip,
+			pTrackerServer->port, result, STRERROR(result));
 		return result;
 	}
 
@@ -175,11 +175,11 @@ static int storage_do_get_group_name(ConnectionInfo *pTrackerServer)
 
 	if (in_bytes != FDFS_GROUP_NAME_MAX_LEN)
 	{
-		logError("file: "__FILE__", line: %d, " \
-			"tracker server %s:%u, recv body length: " \
-			"%"PRId64" != %d",  \
-			__LINE__, pTrackerServer->ip_addr, \
-			pTrackerServer->port, in_bytes, FDFS_GROUP_NAME_MAX_LEN);
+        format_ip_address(pTrackerServer->ip_addr, formatted_ip);
+		logError("file: "__FILE__", line: %d, "
+			"tracker server %s:%u, recv body length: %"PRId64" != %d",
+            __LINE__, formatted_ip, pTrackerServer->port,
+            in_bytes, FDFS_GROUP_NAME_MAX_LEN);
 		return EINVAL;
 	}
 
@@ -219,42 +219,97 @@ static int storage_get_group_name_from_tracker()
 	return result;
 }
 
-static int tracker_get_my_server_id()
+static int get_my_server_id_by_local_ip()
 {
-	struct in_addr ip_addr;
-    char ip_str[256];
+    FDFSStorageIdInfo *idInfo;
+    const char *ip_addr;
 
-	if (inet_pton(AF_INET, g_tracker_client_ip.ips[0].address, &ip_addr) == 1)
+    ip_addr = get_first_local_ip();
+    while (ip_addr != NULL) {
+        if ((idInfo=fdfs_get_storage_id_by_ip(g_group_name,
+                        ip_addr)) != NULL)
+        {
+            snprintf(g_my_server_id_str, sizeof(g_my_server_id_str),
+                    "%s", idInfo->id);
+            return 0;
+        }
+
+        ip_addr = get_next_local_ip(ip_addr);
+    }
+
+    logError("file: "__FILE__", line: %d, "
+            "can't find my server id by local ip address, "
+            "local ip count: %d", __LINE__, g_local_host_ip_count);
+    return ENOENT;
+}
+
+static int tracker_get_my_server_id(const char *conf_filename,
+        const char *server_id_in_conf)
+{
+	struct in_addr ipv4_addr;
+	struct in6_addr ipv6_addr;
+    char ip_str[256];
+	bool flag = false;
+
+	if (inet_pton(AF_INET, g_tracker_client_ip.ips[0].
+                address, &ipv4_addr) == 1)
 	{
-		g_server_id_in_filename = ip_addr.s_addr;
+		g_server_id_in_filename = ipv4_addr.s_addr;
+		flag = true;
 	}
-	else
-	{
-		logError("file: "__FILE__", line: %d, " \
-			"call inet_pton for ip: %s fail", \
-		__LINE__, g_tracker_client_ip.ips[0].address);
-		g_server_id_in_filename = INADDR_NONE;
-	}
+	else if (inet_pton(AF_INET6, g_tracker_client_ip.ips[0].
+                address, &ipv6_addr) == 1)
+    {
+        g_server_id_in_filename = *((in_addr_64_t *)((char *)&ipv6_addr + 8));
+        flag = true;
+    }
+
+	if (!flag)
+    {
+        logWarning("file: "__FILE__", line: %d, "
+                "call inet_pton for ip: %s fail",
+                __LINE__, g_tracker_client_ip.ips[0].address);
+        g_server_id_in_filename = INADDR_NONE;
+    }
 
 	if (g_use_storage_id)
 	{
 		ConnectionInfo *pTrackerServer;
 		int result;
 
-		pTrackerServer = tracker_get_connection();
-		if (pTrackerServer == NULL)
-		{
-			return errno != 0 ? errno : ECONNREFUSED;
-		}
+        if (g_trust_storage_server_id) {
+            if (server_id_in_conf == NULL) {
+                if ((result=get_my_server_id_by_local_ip()) != 0) {
+                    return result;
+                }
+            } else if (*server_id_in_conf != '\0') {
+                if (!fdfs_is_server_id_valid(server_id_in_conf)) {
+                    logError("file: "__FILE__", line: %d, "
+                            "config file: %s, server_id: %s is invalid",
+                            __LINE__, conf_filename, server_id_in_conf);
+                    return EINVAL;
+                }
+                snprintf(g_my_server_id_str, sizeof(g_my_server_id_str),
+                        "%s", server_id_in_conf);
+            }
+        }
 
-		result = tracker_get_storage_id(pTrackerServer,
-			g_group_name, g_tracker_client_ip.ips[0].address,
-            g_my_server_id_str);
-		tracker_close_connection_ex(pTrackerServer, result != 0);
-		if (result != 0)
-		{
-			return result;
-		}
+        if (*g_my_server_id_str == '\0') {
+            pTrackerServer = tracker_get_connection();
+            if (pTrackerServer == NULL)
+            {
+                return errno != 0 ? errno : ECONNREFUSED;
+            }
+
+            result = tracker_get_storage_id(pTrackerServer,
+                    g_group_name, g_tracker_client_ip.ips[0].address,
+                    g_my_server_id_str);
+            tracker_close_connection_ex(pTrackerServer, result != 0);
+            if (result != 0)
+            {
+                return result;
+            }
+        }
 
 		if (g_id_type_in_filename == FDFS_ID_TYPE_SERVER_ID)
 		{
@@ -262,16 +317,25 @@ static int tracker_get_my_server_id()
 		}
 	}
 	else
-	{
-		snprintf(g_my_server_id_str, sizeof(g_my_server_id_str), "%s",
-			g_tracker_client_ip.ips[0].address);
-	}
+    {
+        // 当IP地址为IPv6时，其storage_id值为IP地址的short code
+        if (is_ipv6_addr(g_tracker_client_ip.ips[0].address))
+        {
+            fdfs_ip_to_shortcode(g_tracker_client_ip.ips[0].address,
+                    g_my_server_id_str);
+        }
+        else
+        {
+            snprintf(g_my_server_id_str, sizeof(g_my_server_id_str), "%s",
+                    g_tracker_client_ip.ips[0].address);
+        }
+    }
 
     fdfs_multi_ips_to_string(&g_tracker_client_ip,
             ip_str, sizeof(ip_str));
 	logInfo("file: "__FILE__", line: %d, "
 		"tracker_client_ip: %s, my_server_id_str: %s, "
-		"g_server_id_in_filename: %d", __LINE__,
+		"g_server_id_in_filename: %"PRIu64, __LINE__,
 		ip_str, g_my_server_id_str, g_server_id_in_filename);
 	return 0;
 }
@@ -1346,6 +1410,7 @@ static int storage_check_tracker_ipaddr(const char *filename)
     TrackerServerInfo *pEnd;
 	ConnectionInfo *conn;
 	ConnectionInfo *conn_end;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     pEnd = g_tracker_group.servers + g_tracker_group.server_count;
     for (pServer=g_tracker_group.servers; pServer<pEnd; pServer++)
@@ -1353,13 +1418,13 @@ static int storage_check_tracker_ipaddr(const char *filename)
         conn_end = pServer->connections + pServer->count;
         for (conn=pServer->connections; conn<conn_end; conn++)
         {
-            //logInfo("server=%s:%u\n", conn->ip_addr, conn->port);
-            if (strcmp(conn->ip_addr, "127.0.0.1") == 0)
+            if (is_loopback_ip(conn->ip_addr))
             {
+                format_ip_address(conn->ip_addr, formatted_ip);
                 logError("file: "__FILE__", line: %d, "
                         "conf file \"%s\", tracker: \"%s:%u\" is invalid, "
-                        "tracker server ip can't be 127.0.0.1",
-                        __LINE__, filename, conn->ip_addr, conn->port);
+                        "tracker server ip can't be loopback address",
+                        __LINE__, filename, formatted_ip, conn->port);
                 return EINVAL;
             }
         }
@@ -1403,6 +1468,7 @@ static int init_my_result_per_tracker()
 
 int storage_func_init(const char *filename)
 {
+    const int fixed_buffer_size = 0;
     const int task_buffer_extra_size = 0;
     const bool need_set_run_by = false;
 	char *pGroupName;
@@ -1410,6 +1476,7 @@ int storage_func_init(const char *filename)
 	char *pIfAliasPrefix;
 	char *pHttpDomain;
 	char *pRotateAccessLogSize;
+    char *server_id_in_conf;
 	IniContext iniContext;
     SFContextIniConfig config;
 	int result;
@@ -1439,11 +1506,11 @@ int storage_func_init(const char *filename)
 
         sf_set_current_time();
 
-        SF_SET_CONTEXT_INI_CONFIG_EX(config, filename, &iniContext,
-                NULL, FDFS_STORAGE_SERVER_DEF_PORT,
+        SF_SET_CONTEXT_INI_CONFIG_EX(config, fc_comm_type_sock, filename,
+                &iniContext, NULL, FDFS_STORAGE_SERVER_DEF_PORT,
                 FDFS_STORAGE_SERVER_DEF_PORT, DEFAULT_WORK_THREADS,
-                "buff_size");
-        if ((result=sf_load_config_ex("storaged", &config,
+                "buff_size", 0);
+        if ((result=sf_load_config_ex("storaged", &config, fixed_buffer_size,
                         task_buffer_extra_size, need_set_run_by)) != 0)
         {
             return result;
@@ -1602,12 +1669,12 @@ int storage_func_init(const char *filename)
 				(g_sync_end_time.hour == 23 && \
 				g_sync_end_time.minute == 59));
 
-        if (g_sf_global_vars.min_buff_size < sizeof(TrackerHeader) +
-                TRUNK_BINLOG_BUFFER_SIZE)
+        if (g_sf_global_vars.net_buffer_cfg.min_buff_size <
+                sizeof(TrackerHeader) + TRUNK_BINLOG_BUFFER_SIZE)
         {
             logError("file: "__FILE__", line: %d, "
                     "item \"buff_size\" is too small, value: %d < %d!",
-                    __LINE__, g_sf_global_vars.min_buff_size,
+                    __LINE__, g_sf_global_vars.net_buffer_cfg.min_buff_size,
                     (int)sizeof(TrackerHeader) + TRUNK_BINLOG_BUFFER_SIZE);
             result = EINVAL;
             break;
@@ -1928,6 +1995,9 @@ int storage_func_init(const char *filename)
 			break;
 		}
 
+        server_id_in_conf = iniGetStrValue(NULL,
+                "server_id", &iniContext);
+
 #ifdef WITH_HTTPD
 		{
 		char *pHttpTrunkSize;
@@ -2076,22 +2146,22 @@ int storage_func_init(const char *filename)
 		return result;
 	}
 
-	if ((result=tracker_get_my_server_id()) != 0)
+	if (g_use_storage_id)
+    {
+        if ((result=fdfs_get_storage_ids_from_tracker_group(
+                        &g_tracker_group)) != 0)
+        {
+            return result;
+        }
+    }
+
+	if ((result=tracker_get_my_server_id(filename, server_id_in_conf)) != 0)
 	{
 		logCrit("file: "__FILE__", line: %d, " \
 			"get my server id from tracker server fail, " \
 			"errno: %d, error info: %s", __LINE__, \
 			result, STRERROR(result));
 		return result;
-	}
-
-	if (g_use_storage_id)
-	{
-		if ((result=fdfs_get_storage_ids_from_tracker_group( \
-				&g_tracker_group)) != 0)
-		{
-			return result;
-		}
 	}
 
 	if ((result=storage_check_ip_changed()) != 0)
@@ -2187,6 +2257,7 @@ static int storage_get_my_ip_from_tracker(ConnectionInfo *conn,
         char *ip_addrs, const int buff_size)
 {
 	char out_buff[sizeof(TrackerHeader) + FDFS_GROUP_NAME_MAX_LEN];
+    char formatted_ip[FORMATTED_IP_SIZE];
 	TrackerHeader *pHeader;
 	int result;
     int64_t in_bytes;
@@ -2200,21 +2271,21 @@ static int storage_get_my_ip_from_tracker(ConnectionInfo *conn,
 	if((result=tcpsenddata_nb(conn->sock, out_buff,
 		sizeof(out_buff), SF_G_NETWORK_TIMEOUT)) != 0)
 	{
+        format_ip_address(conn->ip_addr, formatted_ip);
 		logError("file: "__FILE__", line: %d, "
-			"tracker server %s:%u, send data fail, "
-			"errno: %d, error info: %s.",
-			__LINE__, conn->ip_addr, conn->port,
-			result, STRERROR(result));
+			"tracker server %s:%u, send data fail, errno: %d, "
+			"error info: %s.", __LINE__, formatted_ip,
+            conn->port, result, STRERROR(result));
 		return result;
 	}
 
     if ((result=fdfs_recv_response(conn, &ip_addrs,
                     buff_size - 1, &in_bytes)) != 0)
     {
+        format_ip_address(conn->ip_addr, formatted_ip);
 		logError("file: "__FILE__", line: %d, "
-			"tracker server %s:%u, recv response fail, "
-			"errno: %d, error info: %s.",
-			__LINE__, conn->ip_addr, conn->port,
+			"tracker server %s:%u, recv response fail, errno: %d, "
+			"error info: %s.", __LINE__, formatted_ip, conn->port,
 			result, STRERROR(result));
 		return result;
     }
@@ -2228,6 +2299,7 @@ int storage_set_tracker_client_ips(ConnectionInfo *conn,
 {
     char my_ip_addrs[256];
     char error_info[256];
+    char formatted_ip[FORMATTED_IP_SIZE];
     FDFSMultiIP multi_ip;
 	int result;
 	int i;
@@ -2258,13 +2330,12 @@ int storage_set_tracker_client_ips(ConnectionInfo *conn,
             if ((result=fdfs_check_and_format_ips(&g_tracker_client_ip,
                         error_info, sizeof(error_info))) != 0)
             {
+                format_ip_address(conn->ip_addr, formatted_ip);
                 logCrit("file: "__FILE__", line: %d, "
                         "as a client of tracker server %s:%u, "
                         "my ip: %s not valid, error info: %s. "
-                        "program exit!", __LINE__,
-                        conn->ip_addr, conn->port,
-                        multi_ip.ips[i].address, error_info);
-
+                        "program exit!", __LINE__, formatted_ip,
+                        conn->port, multi_ip.ips[i].address, error_info);
                 return result;
             }
 
@@ -2276,11 +2347,12 @@ int storage_set_tracker_client_ips(ConnectionInfo *conn,
 
             fdfs_multi_ips_to_string(&g_tracker_client_ip,
                     ip_str, sizeof(ip_str));
+            format_ip_address(conn->ip_addr, formatted_ip);
             logError("file: "__FILE__", line: %d, "
                     "as a client of tracker server %s:%u, "
                     "my ip: %s not consistent with client ips: %s "
-                    "of other tracker client. program exit!", __LINE__,
-                    conn->ip_addr, conn->port,
+                    "of other tracker client. program exit!",
+                    __LINE__, formatted_ip, conn->port,
                     multi_ip.ips[i].address, ip_str);
 
             return result;

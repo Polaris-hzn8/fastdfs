@@ -100,9 +100,10 @@ extern FDFSMultiIP g_last_storage_ip;	//the last storage ip address
 
 extern LogContext g_access_log_context;
 
-extern in_addr_t g_server_id_in_filename;
+extern in_addr_64_t g_server_id_in_filename;
 extern bool g_store_slave_file_use_link; //if store slave file use symbol link
 extern bool g_use_storage_id;  //identify storage by ID instead of IP address
+extern bool g_trust_storage_server_id;
 extern byte g_id_type_in_filename; //id type of the storage server in the filename
 extern bool g_use_access_log;  //if log to access log
 extern bool g_rotate_access_log;  //if rotate the access log every day
@@ -116,7 +117,7 @@ extern char g_key_namespace[FDHT_MAX_NAMESPACE_LEN+1];
 extern int g_namespace_len;
 
 extern int g_allow_ip_count;  /* -1 means match any ip address */
-extern in_addr_t *g_allow_ip_addrs;  /* sorted array, asc order */
+extern in_addr_64_t *g_allow_ip_addrs;  /* sorted array, asc order */
 
 extern StorageStatusPerTracker *g_my_report_status;  //returned by tracker server
 

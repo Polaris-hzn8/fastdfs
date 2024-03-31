@@ -20,10 +20,11 @@
 #include "fastcommon/logger.h"
 #include "fdfs_global.h"
 
-Version g_fdfs_version = {6, 9, 5};
+Version g_fdfs_version = {6, 12, 1};
 bool g_use_connection_pool = false;
 ConnectionPool g_connection_pool;
 int g_connection_pool_max_idle_time = 3600;
+struct base64_context g_fdfs_base64_context;
 
 /*
 data filename format:

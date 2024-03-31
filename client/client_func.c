@@ -134,17 +134,18 @@ static int copy_tracker_servers(TrackerServerGroup *pTrackerGroup,
 		}
 	}
 
-	/*
+    /*
 	{
 	TrackerServerInfo *pServer;
-	for (pServer=pTrackerGroup->servers; pServer<pTrackerGroup->servers+ \
+    char formatted_ip[FORMATTED_IP_SIZE];
+	for (pServer=pTrackerGroup->servers; pServer<pTrackerGroup->servers+
 		pTrackerGroup->server_count;	pServer++)
 	{
-		//printf("server=%s:%u\n", \
-			pServer->ip_addr, pServer->port);
+        format_ip_address(pServer->connections[0].ip_addr, formatted_ip);
+		printf("server=%s:%u\n", formatted_ip, pServer->connections[0].port);
 	}
 	}
-	*/
+    */
 
 	return 0;
 }
@@ -241,7 +242,7 @@ static int fdfs_get_params_from_tracker(bool *use_storage_id)
 
 	continue_flag = false;
 	if ((result=fdfs_get_ini_context_from_tracker(&g_tracker_group,
-		&iniContext, &continue_flag, false, NULL)) != 0)
+                    &iniContext, &continue_flag)) != 0)
     {
         return result;
     }
@@ -348,39 +349,77 @@ static int fdfs_client_do_init_ex(TrackerServerGroup *pTrackerGroup, \
 		return result;
 	}
 
-	load_fdfs_parameters_from_tracker = iniGetBoolValue(NULL, \
-				"load_fdfs_parameters_from_tracker", \
+	load_fdfs_parameters_from_tracker = iniGetBoolValue(NULL,
+				"load_fdfs_parameters_from_tracker",
 				iniContext, false);
 	if (load_fdfs_parameters_from_tracker)
 	{
-		fdfs_get_params_from_tracker(&use_storage_id);
+		if ((result=fdfs_get_params_from_tracker(&use_storage_id)) != 0)
+        {
+            return result;
+        }
 	}
 	else
-	{
-		use_storage_id = iniGetBoolValue(NULL, "use_storage_id", \
-				iniContext, false);
-		if (use_storage_id)
-		{
-			result = fdfs_load_storage_ids_from_file( \
-					conf_filename, iniContext);
-		}
-	}
+    {
+        use_storage_id = iniGetBoolValue(NULL, "use_storage_id",
+                iniContext, false);
+        if (use_storage_id)
+        {
+            if ((result=fdfs_load_storage_ids_from_file(
+                            conf_filename, iniContext)) != 0)
+            {
+                return result;
+            }
+        }
+    }
+
+    if (use_storage_id)
+    {
+        FDFSStorageIdInfo *idInfo;
+        FDFSStorageIdInfo *end;
+        char *connect_first_by;
+
+        end = g_storage_ids_by_id.ids + g_storage_ids_by_id.count;
+        for (idInfo=g_storage_ids_by_id.ids; idInfo<end; idInfo++)
+        {
+            if (idInfo->ip_addrs.count > 1)
+            {
+                g_multi_storage_ips = true;
+                break;
+            }
+        }
+
+        if (g_multi_storage_ips)
+        {
+            connect_first_by = iniGetStrValue(NULL,
+                    "connect_first_by", iniContext);
+            if (connect_first_by != NULL && strncasecmp(connect_first_by,
+                        "last", 4) == 0)
+            {
+                g_connect_first_by = fdfs_connect_first_by_last_connected;
+            }
+        }
+    }
 
 #ifdef DEBUG_FLAG
-	logDebug("base_path=%s, " \
-		"connect_timeout=%d, "\
-		"network_timeout=%d, "\
-		"tracker_server_count=%d, " \
-		"anti_steal_token=%d, " \
-		"anti_steal_secret_key length=%d, " \
-		"use_connection_pool=%d, " \
-		"g_connection_pool_max_idle_time=%ds, " \
-		"use_storage_id=%d, storage server id count: %d\n", \
-		SF_G_BASE_PATH_STR, SF_G_CONNECT_TIMEOUT, \
-		SF_G_NETWORK_TIMEOUT, pTrackerGroup->server_count, \
-		g_anti_steal_token, g_anti_steal_secret_key.length, \
-		g_use_connection_pool, g_connection_pool_max_idle_time, \
-		use_storage_id, g_storage_ids_by_id.count);
+	logDebug("base_path=%s, "
+		"connect_timeout=%d, "
+		"network_timeout=%d, "
+		"tracker_server_count=%d, "
+		"anti_steal_token=%d, "
+		"anti_steal_secret_key length=%d, "
+		"use_connection_pool=%d, "
+		"g_connection_pool_max_idle_time=%ds, "
+		"use_storage_id=%d, connect_first_by=%s, "
+        "storage server id count: %d, "
+        "multi storage ips: %d\n",
+		SF_G_BASE_PATH_STR, SF_G_CONNECT_TIMEOUT,
+		SF_G_NETWORK_TIMEOUT, pTrackerGroup->server_count,
+		g_anti_steal_token, g_anti_steal_secret_key.length,
+		g_use_connection_pool, g_connection_pool_max_idle_time,
+		use_storage_id, g_connect_first_by == fdfs_connect_first_by_tracker ?
+        "tracker" : "last-connected", g_storage_ids_by_id.count,
+        g_multi_storage_ips);
 #endif
 
 	return 0;

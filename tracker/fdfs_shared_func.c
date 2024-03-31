@@ -10,10 +10,12 @@
 #include <string.h>
 #include <limits.h>
 #include <netdb.h>
+#include <ctype.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/local_ip_func.h"
+#include "fastcommon/md5.h"
 #include "tracker_proto.h"
 #include "fdfs_global.h"
 #include "fdfs_shared_func.h"
@@ -201,19 +203,19 @@ int fdfs_parse_storage_reserved_space(IniContext *pIniContext,
 	char *pReservedSpaceStr;
 	int64_t storage_reserved;
 
-	pReservedSpaceStr = iniGetStrValue(NULL, \
+	pReservedSpaceStr = iniGetStrValue(NULL,
 			"reserved_storage_space", pIniContext);
 	if (pReservedSpaceStr == NULL)
 	{
-		pStorageReservedSpace->flag = \
+		pStorageReservedSpace->flag =
 				TRACKER_STORAGE_RESERVED_SPACE_FLAG_MB;
 		pStorageReservedSpace->rs.mb = FDFS_DEF_STORAGE_RESERVED_MB;
 		return 0;
 	}
 	if (*pReservedSpaceStr == '\0')
 	{
-		logError("file: "__FILE__", line: %d, " \
-			"item \"reserved_storage_space\" is empty!", \
+		logError("file: "__FILE__", line: %d, "
+			"item \"reserved_storage_space\" is empty!",
 			__LINE__);
 		return EINVAL;
 	}
@@ -225,24 +227,22 @@ int fdfs_parse_storage_reserved_space(IniContext *pIniContext,
 		pStorageReservedSpace->flag = TRACKER_STORAGE_RESERVED_SPACE_FLAG_RATIO;
 		endptr = NULL;
 		*(pReservedSpaceStr + len - 1) = '\0';
-		pStorageReservedSpace->rs.ratio = \
+		pStorageReservedSpace->rs.ratio =
 					strtod(pReservedSpaceStr, &endptr);
 		if (endptr != NULL && *endptr != '\0')
 		{
-			logError("file: "__FILE__", line: %d, " \
-				"item \"reserved_storage_space\": %s%%"\
-				" is invalid!", __LINE__, \
-				pReservedSpaceStr);
+			logError("file: "__FILE__", line: %d, "
+				"item \"reserved_storage_space\": %s%%"
+				" is invalid!", __LINE__, pReservedSpaceStr);
 			return EINVAL;
 		}
 
-		if (pStorageReservedSpace->rs.ratio <= 0.00 || \
+		if (pStorageReservedSpace->rs.ratio <= 0.00 ||
 			pStorageReservedSpace->rs.ratio >= 100.00)
 		{
-			logError("file: "__FILE__", line: %d, " \
-				"item \"reserved_storage_space\": %s%%"\
-				" is invalid!", __LINE__, \
-				pReservedSpaceStr);
+			logError("file: "__FILE__", line: %d, "
+				"item \"reserved_storage_space\": %s%%"
+				" is invalid!", __LINE__, pReservedSpaceStr);
 			return EINVAL;
 		}
 
@@ -310,7 +310,7 @@ int64_t fdfs_get_storage_reserved_space_mb(const int64_t total_mb,
 bool fdfs_check_reserved_space(FDFSGroupInfo *pGroup, \
 	FDFSStorageReservedSpace *pStorageReservedSpace)
 {
-	if (pStorageReservedSpace->flag == \
+	if (pStorageReservedSpace->flag ==
 			TRACKER_STORAGE_RESERVED_SPACE_FLAG_MB)
 	{
 		return pGroup->free_mb > pStorageReservedSpace->rs.mb;
@@ -328,7 +328,7 @@ bool fdfs_check_reserved_space(FDFSGroupInfo *pGroup, \
 			pStorageReservedSpace->rs.ratio);
 		*/
 
-		return ((double)pGroup->free_mb / (double)pGroup->total_mb) > \
+		return ((double)pGroup->free_mb / (double)pGroup->total_mb) >
 			pStorageReservedSpace->rs.ratio;
 	}
 }
@@ -336,12 +336,12 @@ bool fdfs_check_reserved_space(FDFSGroupInfo *pGroup, \
 bool fdfs_check_reserved_space_trunk(FDFSGroupInfo *pGroup, \
 	FDFSStorageReservedSpace *pStorageReservedSpace)
 {
-	if (pStorageReservedSpace->flag == \
+	if (pStorageReservedSpace->flag ==
 			TRACKER_STORAGE_RESERVED_SPACE_FLAG_MB)
-	{
-		return (pGroup->free_mb + pGroup->trunk_free_mb > 
-			pStorageReservedSpace->rs.mb);
-	}
+    {
+        return (pGroup->free_mb + pGroup->trunk_free_mb >
+                pStorageReservedSpace->rs.mb);
+    }
 	else
 	{
 		if (pGroup->total_mb == 0)
@@ -351,20 +351,20 @@ bool fdfs_check_reserved_space_trunk(FDFSGroupInfo *pGroup, \
 
 		/*
 		logInfo("storage trunk=%.4f, rs.ratio=%.4f", 
-		((double)(pGroup->free_mb + pGroup->trunk_free_mb) / \
+		((double)(pGroup->free_mb + pGroup->trunk_free_mb) /
 		(double)pGroup->total_mb), pStorageReservedSpace->rs.ratio);
 		*/
 
-		return ((double)(pGroup->free_mb + pGroup->trunk_free_mb) / \
+		return ((double)(pGroup->free_mb + pGroup->trunk_free_mb) /
 		(double)pGroup->total_mb) > pStorageReservedSpace->rs.ratio;
 	}
 }
 
-bool fdfs_check_reserved_space_path(const int64_t total_mb, \
-	const int64_t free_mb, const int64_t avg_mb, \
+bool fdfs_check_reserved_space_path(const int64_t total_mb,
+	const int64_t free_mb, const int64_t avg_mb,
 	FDFSStorageReservedSpace *pStorageReservedSpace)
 {
-	if (pStorageReservedSpace->flag == \
+	if (pStorageReservedSpace->flag ==
 			TRACKER_STORAGE_RESERVED_SPACE_FLAG_MB)
 	{
 		return free_mb > avg_mb;
@@ -377,14 +377,14 @@ bool fdfs_check_reserved_space_path(const int64_t total_mb, \
 		}
 
 		/*
-		logInfo("storage path, free_mb=%"PRId64 \
-			", total_mb=%"PRId64", " \
-			"real ratio=%.4f, rs.ratio=%.4f", \
-			free_mb, total_mb, ((double)free_mb / total_mb), \
+		logInfo("storage path, free_mb=%"PRId64
+			", total_mb=%"PRId64", "
+			"real ratio=%.4f, rs.ratio=%.4f",
+			free_mb, total_mb, ((double)free_mb / total_mb),
 			pStorageReservedSpace->rs.ratio);
 		*/
 
-		return ((double)free_mb / (double)total_mb) > \
+		return ((double)free_mb / (double)total_mb) >
 			pStorageReservedSpace->rs.ratio;
 	}
 }
@@ -437,6 +437,7 @@ void fdfs_set_log_rotate_size(LogContext *pContext, const int64_t log_rotate_siz
 int fdfs_parse_server_info_ex(char *server_str, const int default_port,
         TrackerServerInfo *pServer, const bool resolve)
 {
+	char *pSquare;
 	char *pColon;
     char *hosts[FDFS_MULTI_IP_MAX_COUNT];
     ConnectionInfo *conn;
@@ -444,7 +445,30 @@ int fdfs_parse_server_info_ex(char *server_str, const int default_port,
     int i;
 
     memset(pServer, 0, sizeof(TrackerServerInfo));
-    if ((pColon=strrchr(server_str, ':')) == NULL)
+    if (*server_str == '[')
+    {
+        server_str++;
+        if ((pSquare=strchr(server_str, ']')) == NULL)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "host \"%s\" is invalid",
+                    __LINE__, server_str - 1);
+            return EINVAL;
+        }
+
+        *pSquare = '\0';
+        pColon = pSquare + 1;  //skip ]
+        if (*pColon != ':')
+        {
+            pColon = NULL;
+        }
+    }
+    else
+    {
+        pColon = strrchr(server_str, ':');
+    }
+
+    if (pColon == NULL)
     {
         logInfo("file: "__FILE__", line: %d, "
                 "no port part in %s, set port to %d",
@@ -464,8 +488,8 @@ int fdfs_parse_server_info_ex(char *server_str, const int default_port,
     {
         if (resolve)
         {
-            if (getIpaddrByName(hosts[i], conn->ip_addr,
-                        sizeof(conn->ip_addr)) == INADDR_NONE)
+            if (getIpaddrByNameEx(hosts[i], conn->ip_addr,
+                        sizeof(conn->ip_addr), &conn->af) == INADDR_NONE)
             {
                 logError("file: "__FILE__", line: %d, "
                         "host \"%s\" is invalid, error info: %s",
@@ -476,7 +500,9 @@ int fdfs_parse_server_info_ex(char *server_str, const int default_port,
         else
         {
             snprintf(conn->ip_addr, sizeof(conn->ip_addr), "%s", hosts[i]);
+            conn->af = is_ipv6_addr(conn->ip_addr) ? AF_INET6 : AF_INET;
         }
+
         conn->port = port;
         conn->sock = -1;
         conn++;
@@ -491,25 +517,60 @@ int fdfs_server_info_to_string_ex(const TrackerServerInfo *pServer,
 	const ConnectionInfo *conn;
 	const ConnectionInfo *end;
     int len;
+    bool is_ipv6;
 
     if (pServer->count <= 0)
     {
         *buff = '\0';
         return 0;
     }
+
     if (pServer->count == 1)
     {
-        return snprintf(buff, buffSize, "%s:%u",
-                pServer->connections[0].ip_addr, port);
+        if (is_ipv6_addr(pServer->connections[0].ip_addr))
+        {
+            return snprintf(buff, buffSize, "[%s]:%u",
+                    pServer->connections[0].ip_addr, port);
+        }
+        else
+        {
+            return snprintf(buff, buffSize, "%s:%u",
+                    pServer->connections[0].ip_addr, port);
+        }
     }
 
-    len = snprintf(buff, buffSize, "%s", pServer->connections[0].ip_addr);
+    is_ipv6 = false;
 	end = pServer->connections + pServer->count;
+	for (conn=pServer->connections; conn<end; conn++)
+    {
+        if (is_ipv6_addr(conn->ip_addr))
+        {
+            is_ipv6 = true;
+            break;
+        }
+    }
+
+    if (is_ipv6)
+    {
+        *buff = '[';
+        len = 1;
+    }
+    else
+    {
+        len = 0;
+    }
+
+    len += snprintf(buff + len, buffSize - len, "%s",
+            pServer->connections[0].ip_addr);
 	for (conn=pServer->connections + 1; conn<end; conn++)
     {
         len += snprintf(buff + len, buffSize - len, ",%s", conn->ip_addr);
     }
-    len += snprintf(buff + len, buffSize - len, ":%d", port);
+    if (is_ipv6 && len < buffSize - 2)
+    {
+        *(buff + len++) = ']';
+    }
+    len += snprintf(buff + len, buffSize - len, ":%u", port);
     return len;
 }
 
@@ -781,3 +842,12 @@ void fdfs_set_server_info_ex(TrackerServerInfo *pServer,
     }
 }
 
+char *fdfs_ip_to_shortcode(const char *ipAddr, char *shortCode)
+{
+    int64_t crc64;
+    int len;
+
+    crc64 = CRC32_ex(ipAddr, strlen(ipAddr), CRC32_XINIT);
+    return base64_encode(&g_fdfs_base64_context, (const char *)&crc64,
+            sizeof(crc64), shortCode, &len);
+}

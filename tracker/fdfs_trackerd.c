@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
 		return result;
 	}
 
-	base64_init_ex(&g_base64_context, 0, '-', '_', '.');
+	base64_init_ex(&g_fdfs_base64_context, 0, '-', '_', '.');
 	if ((result=set_rand_seed()) != 0)
 	{
 		logCrit("file: "__FILE__", line: %d, " \
@@ -289,8 +289,8 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	if ((result=set_run_by(g_sf_global_vars.run_by_group,
-                    g_sf_global_vars.run_by_user)) != 0)
+	if ((result=set_run_by(g_sf_global_vars.run_by.group,
+                    g_sf_global_vars.run_by.user)) != 0)
 	{
 		logCrit("exit abnormally!\n");
 		log_destroy();
@@ -423,18 +423,34 @@ static void sigAlarmHandler(int sig)
 	logDebug("file: "__FILE__", line: %d, " \
 		"signal server to quit...", __LINE__);
 
-	if (*g_sf_context.inner_bind_addr != '\0')
-	{
-		strcpy(server.ip_addr, g_sf_context.inner_bind_addr);
-	}
-	else
-	{
-		strcpy(server.ip_addr, "127.0.0.1");
-	}
+    if (SF_G_IPV4_ENABLED)
+    {
+        server.af = AF_INET;
+        if (*SF_G_INNER_BIND_ADDR4 != '\0')
+        {
+            strcpy(server.ip_addr, SF_G_INNER_BIND_ADDR4);
+        }
+        else
+        {
+            strcpy(server.ip_addr, LOCAL_LOOPBACK_IPv4);
+        }
+    }
+    else
+    {
+        server.af = AF_INET6;
+        if (*SF_G_INNER_BIND_ADDR6 != '\0')
+        {
+            strcpy(server.ip_addr, SF_G_INNER_BIND_ADDR6);
+        }
+        else
+        {
+            strcpy(server.ip_addr, LOCAL_LOOPBACK_IPv6);
+        }
+    }
 	server.port = SF_G_INNER_PORT;
 	server.sock = -1;
 
-	if (conn_pool_connect_server(&server, SF_G_CONNECT_TIMEOUT) != 0)
+	if (conn_pool_connect_server(&server, SF_G_CONNECT_TIMEOUT * 1000) != 0)
 	{
 		return;
 	}

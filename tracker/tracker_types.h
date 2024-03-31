@@ -48,7 +48,7 @@
 #define FDFS_TRUNK_LOGIC_FILENAME_LENGTH  (FDFS_TRUNK_FILENAME_LENGTH + \
 		(FDFS_LOGIC_FILE_PATH_LEN - FDFS_TRUE_FILE_PATH_LEN))
 
-#define FDFS_VERSION_SIZE		6
+#define FDFS_VERSION_SIZE		8
 
 //status order is important!
 #define FDFS_STORAGE_STATUS_INIT	  0
@@ -427,6 +427,7 @@ typedef struct
     char version[FDFS_VERSION_SIZE];   //storage version
     char group_name[FDFS_GROUP_NAME_MAX_LEN + 1];
     char domain_name[FDFS_DOMAIN_NAME_MAX_SIZE];
+    char storage_id[FDFS_STORAGE_ID_MAX_SIZE];
     char init_flag;
     signed char status;
     int tracker_count;
@@ -470,6 +471,11 @@ typedef struct {
 	int restart_interval; //restart interval, less mean higher weight
 	bool if_leader;       //if leader
 } TrackerRunningStatus;
+
+typedef struct {
+    char *ptr;
+    char holder[FDFS_STORAGE_ID_MAX_SIZE];
+} FDFSStorageId;
 
 #endif
 
